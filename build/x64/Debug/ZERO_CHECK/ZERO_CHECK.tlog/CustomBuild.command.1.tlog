@@ -1,0 +1,10 @@
+^C:\USERS\ROBOR\ONEDRIVE\DESKTOP\RAYTRACINGFREECAM\BUILD\CMAKEFILES\69C574FBEE6E01FBD06344D74AE37763\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/robor/OneDrive/Desktop/RayTracingFreecam -BC:/Users/robor/OneDrive/Desktop/RayTracingFreecam/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/robor/OneDrive/Desktop/RayTracingFreecam/build/RayTracingFreecam.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

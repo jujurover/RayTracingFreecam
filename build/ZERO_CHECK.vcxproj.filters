@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\build\CMakeFiles\69c574fbee6e01fbd06344d74ae37763\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{94C99D37-4355-39FC-A856-A2727E04A694}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
