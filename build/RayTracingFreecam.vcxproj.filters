@@ -1,14 +1,84 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\main.cpp">
+    <ClCompile Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\AABB.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\background.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\BVHNode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\camera.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\color.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\display.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\hittable.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\hittableList.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\ImageMaker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\interval.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\material.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\onb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\pdf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\quadrilateral.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\ray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\sphere.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\triangle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\vec3_0.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\src\utility2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="..\src\kernel.cu">
+      <Filter>Source Files</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="C:\Users\robor\OneDrive\Desktop\RayTracingFreecam\CMakeLists.txt" />
   </ItemGroup>
   <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{3E3CAF80-E3B7-315B-84A1-452924188005}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files">
       <UniqueIdentifier>{FDC40401-BB57-31B6-AB5C-6BF5C8DC7ED2}</UniqueIdentifier>
     </Filter>

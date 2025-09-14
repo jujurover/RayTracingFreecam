@@ -249,6 +249,21 @@
 			"path" : "C:/Program Files/CMake/share/cmake-4.1/Modules/CMakeCommonLanguageInclude.cmake"
 		},
 		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/CMake/share/cmake-4.1/Modules/FindCUDAToolkit.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/CMake/share/cmake-4.1/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/CMake/share/cmake-4.1/Modules/FindPackageMessage.cmake"
+		},
+		{
 			"isGenerated" : true,
 			"path" : "build/vcpkg_installed/x64-windows/share/glad/gladConfigVersion.cmake"
 		},
