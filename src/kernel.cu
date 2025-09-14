@@ -89,7 +89,7 @@ __global__ void constructCameraKernel(camera_device* cam, float aspectRatio, int
     cam->bg = *bg;
     cam->initialize(); // device-side init (as in your original)
 }
-__global__ void renderKernel(camera_device* cam, uchar4* image, hittable* world, hittable* lights, BVHNode* search_tree, int frame)
+__global__ void renderKernel(camera_device* cam, uchar4* gl_image, double* d_accumulation_buffer, hittable* world, hittable* lights, BVHNode* search_tree, int frame)
 {
     int j = blockIdx.x * blockDim.x + threadIdx.x; // column
     int i = blockIdx.y * blockDim.y + threadIdx.y; // row
@@ -97,26 +97,44 @@ __global__ void renderKernel(camera_device* cam, uchar4* image, hittable* world,
 
     if (i >= cam->imageHeight || j >= cam->imageWidth || k >= cam->samplesPerPixel) return;
 
-    int pixel_index = i * cam->imageWidth + j;
+    int pixel_index = (cam->imageHeight - i -1) * cam->imageWidth + j;
 
     ray r = cam->get_ray(j, i);
-    color current_color = cam->ray_color(r, cam->maxDepth, *world, *lights, *search_tree);
+    color accumulated_color = cam->ray_color(r, cam->maxDepth, *world, *lights, *search_tree);
 
-    if (current_color.x() != current_color.x() ||
-        current_color.y() != current_color.y() ||
-        current_color.z() != current_color.z())
+    if (accumulated_color.x() != accumulated_color.x() ||
+        accumulated_color.y() != accumulated_color.y() ||
+        accumulated_color.z() != accumulated_color.z())
     {
-        current_color = color(0, 0, 0); // NaN check
+        accumulated_color = color(0, 0, 0); // NaN check
     }
 
-    //current_color *= cam->pixelSamplesScale;
-    //printf("Pixel (%d, %d), Sample %d: Color (%.2f, %.2f, %.2f)\n", j, i, k, current_color.x(), current_color.y(), current_color.z());
-    /* unsigned char red = (j + frame) % 256;
-    unsigned char green = (i + frame) % 256;
-    unsigned char blue = 128;
-    image[pixel_index] = make_uchar4(red, green, blue, 255); */
+    // Accumulate color in the accumulation buffer
+    int accumulation_index = pixel_index * 3;
 
-    image[pixel_index] = make_uchar4(current_color.x(), current_color.y(), current_color.z(), 255);
+
+
+    if(frame == 0)
+    {
+        d_accumulation_buffer[accumulation_index + 0] += accumulated_color.x();
+        d_accumulation_buffer[accumulation_index + 1] += accumulated_color.y();
+        d_accumulation_buffer[accumulation_index + 2] += accumulated_color.z();
+    } else 
+    {
+        d_accumulation_buffer[accumulation_index + 0] = (d_accumulation_buffer[accumulation_index + 0] * frame + accumulated_color.x()) / (frame + 1);
+        d_accumulation_buffer[accumulation_index + 1] = (d_accumulation_buffer[accumulation_index + 1] * frame + accumulated_color.y()) / (frame + 1);
+        d_accumulation_buffer[accumulation_index + 2] = (d_accumulation_buffer[accumulation_index + 2] * frame + accumulated_color.z()) / (frame + 1);
+    }
+ 
+
+    // Apply gamma correction and convert to [0, 255]
+    color gl_color;
+    
+    gl_color[0] = fminf(fmaxf(pow(d_accumulation_buffer[accumulation_index + 0], 1.0f / 2.2f) * 255.0f, 0.0f), 255.0f);
+    gl_color[1] = fminf(fmaxf(pow(d_accumulation_buffer[accumulation_index + 1], 1.0f / 2.2f) * 255.0f, 0.0f), 255.0f);
+    gl_color[2] = fminf(fmaxf(pow(d_accumulation_buffer[accumulation_index + 2], 1.0f / 2.2f) * 255.0f, 0.0f), 255.0f);
+
+    gl_image[pixel_index] = make_uchar4(gl_color.x(), gl_color.y(), gl_color.z(), 255);
 }
 /* __global__ void renderKernel(uchar4* pixels, int width, int height, int frame)
 {
@@ -260,6 +278,7 @@ camera_device* d_cam_global = nullptr;
 hittable_list** d_world_global = nullptr;
 hittable_list** d_lights_global = nullptr;
 BVHNode* d_bvh_global = nullptr;
+double* d_accumulation_buffer = nullptr;
 
 // Simple shader sources (GLSL 330)
 const char* quadVertSrc = R"glsl(
@@ -422,8 +441,6 @@ void cleanupGraphics() {
     if (screenShader) { glDeleteProgram(screenShader); screenShader = 0; }
 }
 
-
-
 void initPBO(int width, int height)
 {
     // Create OpenGL Pixel Buffer Object
@@ -466,6 +483,7 @@ void runCuda(int frame, int width, int height)
     renderKernel << <grid, block >> > (
         /*camera*/ d_cam_global,
         /*image*/ devPtr,
+        /*accumulation buffer*/ d_accumulation_buffer,
         /*world*/ (hittable*)*d_world_global,
         /*lights*/ (hittable*)*d_lights_global,
         /*bvh*/ d_bvh_global,
@@ -620,6 +638,7 @@ void two_balls_test_setup()
     d_world_global = d_world_ptr;
     d_lights_global = d_lights_ptr;
     d_bvh_global = d_bvh;
+    d_accumulation_buffer = makeImageBuffer(d_cam->imageWidth, d_cam->imageHeight);
 }
 
 void cornell_box_setup()
@@ -682,8 +701,8 @@ void cornell_box_setup()
     BVHNode* d_bvh = makeBVH(list_d_hittables, list_bboxes);
 
     camera_device* d_cam = makeCamera(/*aspect ratio*/ 1.0,
-        /*image_width*/ 1000,
-        /*samples per pixel*/ 100,
+        /*image_width*/ 1024,
+        /*samples per pixel*/ 1,
         /*max depth*/ 50,
         /*vertical fov*/ 40.0,
         /*look from point*/ point3(278, 278, -800),
@@ -696,6 +715,8 @@ void cornell_box_setup()
     d_world_global = d_world;
     d_lights_global = d_lights;
     d_bvh_global = d_bvh;
+    d_accumulation_buffer = makeImageBuffer(d_cam->imageWidth, d_cam->imageHeight);
+
     //run_render_setup(d_cam, (hittable**)d_world, (hittable**)d_lights, d_bvh);
 }
 void setupScene()
