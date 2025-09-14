@@ -4,6 +4,7 @@
         "vector": "cpp",
         "*.inc": "cpp",
         "cmath": "cpp",
-        "memory": "cpp"
+        "memory": "cpp",
+        "xiosbase": "cpp"
     }
 }

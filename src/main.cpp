@@ -2,34 +2,16 @@
 #include <GLFW/glfw3.h>
 #include "kernel.h"
 #include <iostream>
-
+#include <vector>
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 1024;
+const unsigned int SCR_HEIGHT = 1024;
 
 int main()
 {
-    
-cornell_box();
-    return 0;
-}
-
-
-
-int foo()
-{ 
-    std::cout << "Hello World!" << std::endl;
-    return 0;
-}
-
-
-int foo2()
-{
-    std::cout << "Hello World!" << std::endl;
-    
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
@@ -40,6 +22,11 @@ int foo2()
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
+
+
+
+    //glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, SCR_WIDTH, SCR_HEIGHT);
+    //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 512, 512, GL_RGB, GL_UNSIGNED_BYTE, data);
 
     // glfw window creation
     // --------------------
@@ -52,6 +39,7 @@ int foo2()
     }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     // glad: load all OpenGL function pointers
     // ---------------------------------------
@@ -59,7 +47,15 @@ int foo2()
     {
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
-    }    
+    }
+
+    setupScene();
+    initPBO(SCR_WIDTH, SCR_HEIGHT); 
+    initTexture(SCR_WIDTH, SCR_HEIGHT);
+    initScreenQuad();
+    initScreenShader();
+
+    int frame = 0;
 
     // render loop
     // -----------
@@ -69,13 +65,9 @@ int foo2()
         // -----
         processInput(window);
 
-        // render
-        // ------
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        runCuda(frame++, SCR_WIDTH, SCR_HEIGHT);
+        display(SCR_WIDTH, SCR_HEIGHT);
 
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -83,14 +75,18 @@ int foo2()
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
     glfwTerminate();
+    cleanupPBO();
+    cleanupGraphics();
     return 0;
 }
 
+
+
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
-void processInput(GLFWwindow *window)
+void processInput(GLFWwindow* window)
 {
-    if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 }
 

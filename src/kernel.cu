@@ -89,7 +89,7 @@ __global__ void constructCameraKernel(camera_device* cam, float aspectRatio, int
     cam->bg = *bg;
     cam->initialize(); // device-side init (as in your original)
 }
-__global__ void renderKernel(camera_device* cam, double* image, hittable* world, hittable* lights, BVHNode* search_tree)
+__global__ void renderKernel(camera_device* cam, uchar4* image, hittable* world, hittable* lights, BVHNode* search_tree, int frame)
 {
     int j = blockIdx.x * blockDim.x + threadIdx.x; // column
     int i = blockIdx.y * blockDim.y + threadIdx.y; // row
@@ -97,16 +97,10 @@ __global__ void renderKernel(camera_device* cam, double* image, hittable* world,
 
     if (i >= cam->imageHeight || j >= cam->imageWidth || k >= cam->samplesPerPixel) return;
 
-    int pixel_index = (i * cam->imageWidth + j) * 3; // RGB
+    int pixel_index = i * cam->imageWidth + j;
 
-    color pixel_color(0, 0, 0);
-    ray r;
-    color current_color;
-
-    /*for(int s = 0; s < cam->samplesPerPixel; ++s)
-    {*/
-    r = cam->get_ray(j, i);
-    current_color = cam->ray_color(r, cam->maxDepth, *world, *lights, *search_tree);
+    ray r = cam->get_ray(j, i);
+    color current_color = cam->ray_color(r, cam->maxDepth, *world, *lights, *search_tree);
 
     if (current_color.x() != current_color.x() ||
         current_color.y() != current_color.y() ||
@@ -115,14 +109,16 @@ __global__ void renderKernel(camera_device* cam, double* image, hittable* world,
         current_color = color(0, 0, 0); // NaN check
     }
 
-    current_color *= cam->pixelSamplesScale;
-    pixel_color += current_color;
+    //current_color *= cam->pixelSamplesScale;
+    //printf("Pixel (%d, %d), Sample %d: Color (%.2f, %.2f, %.2f)\n", j, i, k, current_color.x(), current_color.y(), current_color.z());
+    /* unsigned char red = (j + frame) % 256;
+    unsigned char green = (i + frame) % 256;
+    unsigned char blue = 128;
+    image[pixel_index] = make_uchar4(red, green, blue, 255); */
 
-    image[pixel_index + 0] += pixel_color[0];
-    image[pixel_index + 1] += pixel_color[1];
-    image[pixel_index + 2] += pixel_color[2];
+    image[pixel_index] = make_uchar4(current_color.x(), current_color.y(), current_color.z(), 255);
 }
-/* __global__ void renderKernel(uchar3* pixels, int width, int height, int frame)
+/* __global__ void renderKernel(uchar4* pixels, int width, int height, int frame)
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -131,8 +127,8 @@ __global__ void renderKernel(camera_device* cam, double* image, hittable* world,
     int idx = y * width + x;
     unsigned char r = (x + frame) % 256;
     unsigned char g = (y + frame) % 256;
-    unsigned char b = 128;
-    pixels[idx] = make_uchar3(r, g, b);
+    unsigned char b = 128; 
+    pixels[idx] = make_uchar4(r, g, b, 255);
 } */
 //translate kernel
 
@@ -253,47 +249,242 @@ static solid_background** makeSolidBackground(color bg_color)
     return d_bg_ptr;
 }
 
-/* GLuint pbo = 0;
-struct cudaGraphicsResource* cudaPboResource;
 
-static void initPBO(int width, int height)
+GLuint pbo = 0;
+struct cudaGraphicsResource* cudaPboResource;
+// Globals (add to your globals)
+GLuint tex = 0;
+GLuint quadVAO = 0, quadVBO = 0, quadEBO = 0;
+GLuint screenShader = 0;
+camera_device* d_cam_global = nullptr;
+hittable_list** d_world_global = nullptr;
+hittable_list** d_lights_global = nullptr;
+BVHNode* d_bvh_global = nullptr;
+
+// Simple shader sources (GLSL 330)
+const char* quadVertSrc = R"glsl(
+#version 330 core
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aTex;
+out vec2 TexCoord;
+void main() {
+    TexCoord = aTex;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}
+)glsl";
+
+const char* quadFragSrc = R"glsl(
+#version 330 core
+in vec2 TexCoord;
+out vec4 FragColor;
+uniform sampler2D screenTex;
+void main() {
+    FragColor = texture(screenTex, TexCoord);
+}
+)glsl";
+
+// Helper: compile shader, link program (minimal error printing)
+static GLuint compileShader(GLenum type, const char* src) {
+    GLuint s = glCreateShader(type);
+    glShaderSource(s, 1, &src, nullptr);
+    glCompileShader(s);
+    GLint ok = 0; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        GLint len = 0; glGetShaderiv(s, GL_INFO_LOG_LENGTH, &len);
+        std::string log(len, '\0'); glGetShaderInfoLog(s, len, nullptr, log.data());
+        std::cerr << "Shader compile error: " << log << std::endl;
+    }
+    return s;
+}
+
+static GLuint linkProgram(GLuint vs, GLuint fs) {
+    GLuint p = glCreateProgram();
+    glAttachShader(p, vs);
+    glAttachShader(p, fs);
+    glLinkProgram(p);
+    GLint ok = 0; glGetProgramiv(p, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        GLint len = 0; glGetProgramiv(p, GL_INFO_LOG_LENGTH, &len);
+        std::string log(len, '\0'); glGetProgramInfoLog(p, len, nullptr, log.data());
+        std::cerr << "Program link error: " << log << std::endl;
+    }
+    // detach/delete shaders by caller
+    return p;
+}
+
+// Call once after GL context creation (before render loop)
+void initTexture(int width, int height) {
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    // allocate texture storage RGBA8
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    // nearest filtering, clamp to edge
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void initScreenQuad() {
+    // fullscreen quad (two triangles)
+    float quadVertices[] = {
+        // positions   // texcoords
+        -1.0f, -1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f, 1.0f,
+        -1.0f,  1.0f,  0.0f, 1.0f
+    };
+    unsigned int indices[] = { 0, 1, 2, 2, 3, 0 };
+
+    glGenVertexArrays(1, &quadVAO);
+    glGenBuffers(1, &quadVBO);
+    glGenBuffers(1, &quadEBO);
+
+    glBindVertexArray(quadVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    // pos (location=0)
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    // tex (location=1)
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+}
+
+void initScreenShader() {
+    GLuint vs = compileShader(GL_VERTEX_SHADER, quadVertSrc);
+    GLuint fs = compileShader(GL_FRAGMENT_SHADER, quadFragSrc);
+    screenShader = linkProgram(vs, fs);
+    // we can delete the compiled shader objects after linking
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    glUseProgram(screenShader);
+    // bind the sampler to texture unit 0
+    GLint loc = glGetUniformLocation(screenShader, "screenTex");
+    if (loc >= 0) glUniform1i(loc, 0);
+    glUseProgram(0);
+}
+
+// Display: call every frame AFTER runCuda() and AFTER cudaGraphicsUnmapResources
+void display(int width, int height)
+{
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Bind PBO as pixel unpack source and upload into texture
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    // Upload from PBO into texture (RGBA)
+    // NOTE: your PBO must have size width*height*4 and CUDA should write uchar4 pixels.
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+    // unbind PBO (texture has the data now)
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+    // Draw fullscreen quad with the texture
+    glUseProgram(screenShader);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    glBindVertexArray(quadVAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+
+    // optional: check GL errors (remove in hot loop if performance matters)
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "GL error in display(): " << err << std::endl;
+    }
+}
+
+// Call at program exit to free GL resources
+void cleanupGraphics() {
+    if (tex) { glDeleteTextures(1, &tex); tex = 0; }
+    if (quadEBO) { glDeleteBuffers(1, &quadEBO); quadEBO = 0; }
+    if (quadVBO) { glDeleteBuffers(1, &quadVBO); quadVBO = 0; }
+    if (quadVAO) { glDeleteVertexArrays(1, &quadVAO); quadVAO = 0; }
+    if (screenShader) { glDeleteProgram(screenShader); screenShader = 0; }
+}
+
+
+
+void initPBO(int width, int height)
 {
     // Create OpenGL Pixel Buffer Object
     glGenBuffers(1, &pbo);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
-    glBufferData(GL_PIXEL_UNPACK_BUFFER, width * height * 3, 0, GL_DYNAMIC_DRAW);
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, width * height * 4, nullptr, GL_DYNAMIC_DRAW);
 
     // Register buffer with CUDA
-    cudaGraphicsGLRegisterBuffer(&cudaPboResource, pbo,
+    cudaError_t err = cudaGraphicsGLRegisterBuffer(&cudaPboResource, pbo,
         cudaGraphicsRegisterFlagsWriteDiscard);
+    if (err != cudaSuccess) {
+        std::cerr << "Error registering PBO with CUDA: " << cudaGetErrorString(err) << std::endl;
+        exit(EXIT_FAILURE);
+    }
 }
-static void cleanupPBO()
+void cleanupPBO()
 {
     cudaGraphicsUnregisterResource(cudaPboResource);
     glDeleteBuffers(1, &pbo);
-} */
-/* static void runCuda(int frame, int width, int height)
+}
+void runCuda(int frame, int width, int height)
 {
-    uchar3* devPtr;
+    uchar4* devPtr;
     size_t size;
-    cudaGraphicsMapResources(1, &cudaPboResource, 0);
-    cudaGraphicsResourceGetMappedPointer((void**)&devPtr, &size, cudaPboResource);
+    cudaError_t err = cudaGraphicsMapResources(1, &cudaPboResource, 0);
+    if (err != cudaSuccess) {
+        std::cerr << "Error mapping PBO with CUDA: " << cudaGetErrorString(err) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    err = cudaGraphicsResourceGetMappedPointer((void**)&devPtr, &size, cudaPboResource);
+    if (err != cudaSuccess) {
+        std::cerr << "Error getting mapped pointer from PBO with CUDA: " << cudaGetErrorString(err) << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
     dim3 block(16, 16);
     dim3 grid((width + block.x - 1) / block.x,
         (height + block.y - 1) / block.y);
 
-    renderKernel << <grid, block >> > (devPtr, width, height, frame);
-    cudaDeviceSynchronize();
+    renderKernel << <grid, block >> > (
+        /*camera*/ d_cam_global,
+        /*image*/ devPtr,
+        /*world*/ (hittable*)*d_world_global,
+        /*lights*/ (hittable*)*d_lights_global,
+        /*bvh*/ d_bvh_global,
+        /*frame*/ frame
+        );
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        std::cerr << "Error synchronizing CUDA device: " << cudaGetErrorString(err) << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
-    cudaGraphicsUnmapResources(1, &cudaPboResource, 0);
+    err = cudaGraphicsUnmapResources(1, &cudaPboResource, 0);
+    if (err != cudaSuccess) {
+        std::cerr << "Error unmapping PBO with CUDA: " << cudaGetErrorString(err) << std::endl;
+        exit(EXIT_FAILURE);
+    }
 }
-static void display(int width, int height)
-{
-    glClear(GL_COLOR_BUFFER_BIT);
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
-    glDrawPixels(width, height, GL_RGB, GL_UNSIGNED_BYTE, 0);
-} */
+
+
 
 
 
@@ -329,7 +520,7 @@ static rotator** rotateObject(hittable** object, float pitch, float roll, float 
 }
 
 
-struct task_organizer
+/* struct task_organizer
 {
     dim3 blocks;
     dim3 threads;
@@ -379,10 +570,11 @@ static void run_render_setup(camera_device* d_cam, hittable** d_world_ptr, hitta
     //Copy back and display
     save_image(d_image, d_cam->imageWidth, d_cam->imageHeight);
 }
+ */
 
 
 
-void two_balls_test()
+void two_balls_test_setup()
 {
     std::vector<hittable*> list_d_hittables;
     list_d_hittables.reserve(2);
@@ -415,7 +607,7 @@ void two_balls_test()
 
     camera_device* d_cam = makeCamera(/*aspect ratio*/ 1.0,
         /*image_width*/ 1024,
-        /*samples per pixel*/ 100,
+        /*samples per pixel*/ 1,
         /*max depth*/ 50,
         /*vertical fov*/ 40.0,
         /*look from point*/ point3(0, 0, -15),
@@ -423,10 +615,14 @@ void two_balls_test()
         /*world up vector*/ vec3(0, 1, 0),
         /*defocus angle*/ 0.0,
         /*background object*/ (background**)d_bg_ptr);
-    run_render_setup(d_cam, (hittable**)d_world_ptr, (hittable**)d_lights_ptr, d_bvh);
+
+    d_cam_global = d_cam;
+    d_world_global = d_world_ptr;
+    d_lights_global = d_lights_ptr;
+    d_bvh_global = d_bvh;
 }
 
-void cornell_box()
+void cornell_box_setup()
 {
     int num_non_emissive = 0;
     int num_emissive = 0;
@@ -495,10 +691,17 @@ void cornell_box()
         /*world up vector*/ vec3(0, 1, 0),
         /*defocus angle*/ 0.0,
         /*background object*/ (background**)bg);
-
-    run_render_setup(d_cam, (hittable**)d_world, (hittable**)d_lights, d_bvh);
+    
+    d_cam_global = d_cam;
+    d_world_global = d_world;
+    d_lights_global = d_lights;
+    d_bvh_global = d_bvh;
+    //run_render_setup(d_cam, (hittable**)d_world, (hittable**)d_lights, d_bvh);
 }
-
+void setupScene()
+{
+    two_balls_test_setup();
+}
 //void launchKernel() {
 //    int num_non_emissive = 0;
 //    int num_emissive = 0;

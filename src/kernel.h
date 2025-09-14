@@ -1,8 +1,11 @@
 #pragma once
 
-// Declare your CUDA kernel launchers here
-// Example:
-// void myKernelLauncher(...);
-
-void two_balls_test();
-void cornell_box();
+void initPBO(int width, int height);
+void runCuda(int frame, int width, int height);
+void display(int width, int height);
+void initTexture(int width, int height);
+void cleanupPBO();
+void cleanupGraphics();
+void initScreenQuad();
+void initScreenShader();
+void setupScene();
