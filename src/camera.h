@@ -16,10 +16,8 @@ class __align__(16) camera_device {
 
 public:
 
-    float aspectRatio;
     int imageWidth;
     int imageHeight;
-    int samplesPerPixel;
     int maxDepth;
     float verticalFov;
     vec3 lookFrom, lookAt, worldUpVector;
@@ -30,19 +28,34 @@ public:
     background* bg;
 
     __device__ camera_device()
-        : aspectRatio(1.0), imageWidth(800), imageHeight(600), samplesPerPixel(100),
+        : imageWidth(800), imageHeight(600),
         maxDepth(50), verticalFov(40.0), lookFrom(point3(0, 0, 0)), lookAt(point3(0, 0, -1)),
         worldUpVector(vec3(0, 1, 0)), defocus_angle(0.0), focus_dist(1.0),
         pixelSamplesScale(1.0), upper_clamp(1.0)
     {
     }
 
+    __device__ __host__ vec3 rotate(const vec3& axis, float angle, const vec3& v) {
+        float c = cos(angle);
+        float s = sin(angle);
+        float t = 1 - c;
+        vec3 a = unit_vector(axis);
+        return vec3(v.x() * (t * a.x() * a.x() + c) + v.y() * (t * a.x() * a.y() - s * a.z()) + v.z() * (t * a.x() * a.z() + s * a.y()),
+            v.x() * (t * a.x() * a.y() + s * a.z()) + v.y() * (t * a.y() * a.y() + c) + v.z() * (t * a.y() * a.z() - s * a.x()),
+            v.x() * (t * a.x() * a.z() - s * a.y()) + v.y() * (t * a.y() * a.z() + s * a.x()) + v.z() * (t * a.z() * a.z() + c)
+        );
+    }
 
-    __device__ void initialize()
+    __host__ void updatePitchYaw(float pitch, float yaw)
     {
-        imageHeight = int(imageWidth / aspectRatio);
-        pixelSamplesScale = 1.0 / samplesPerPixel;
-        imageHeight = (imageHeight < 1) ? 1 : imageHeight;
+        vec3 new_vec = rotate(worldUpVector, -yaw * 3.14159265f / 180.0f, -w);
+        new_vec = rotate(cross(worldUpVector, lookFrom - new_vec), pitch * 3.14159265f / 180.0f, new_vec);
+        lookAt = lookFrom + new_vec;
+        initialize();
+    }
+
+    __device__ __host__ void initialize()
+    {
         center = lookFrom;
 
         // Determine viewport dimensions.
@@ -69,14 +82,14 @@ public:
         pixel00Coord = viewport_upper_left + 0.5f * (pixelDeltaU + pixelDeltaV);
 
         //determing clamping to reduce static
-        if (samplesPerPixel > 2000)
+        /* if (samplesPerPixel > 2000)
             upper_clamp = 1000.0;
         else if (samplesPerPixel > 1000)
             upper_clamp = 100.0;
         else if (samplesPerPixel > 100)
             upper_clamp = 5.0;
         else
-            upper_clamp = 1.0;
+            upper_clamp = 1.0; */
 
     }
 

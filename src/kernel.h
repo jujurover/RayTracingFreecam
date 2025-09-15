@@ -8,4 +8,5 @@ void cleanupPBO();
 void cleanupGraphics();
 void initScreenQuad();
 void initScreenShader();
-void setupScene();
+void setupScene(int width, int height);
+void updateCamera(float pitch, float yaw);

@@ -74,12 +74,11 @@ __global__ void listAddKernel(hittable_list** lst_ptr, hittable** obj, AABB* bbo
     (*lst_ptr)->add(*obj);
     *bbox = (*obj)->bounding_box();
 }
-__global__ void constructCameraKernel(camera_device* cam, float aspectRatio, int imageWidth, int samplesPerPixel, int maxDepth, float verticalFov, point3 lookFrom, point3 lookAt, vec3 worldUpVector, float defocus_angle, background** bg)
+__global__ void constructCameraKernel(camera_device* cam, int imageWidth, int imageHeight, int maxDepth, float verticalFov, point3 lookFrom, point3 lookAt, vec3 worldUpVector, float defocus_angle, background** bg)
 {
     new (cam) camera_device();
-    cam->aspectRatio = aspectRatio;
     cam->imageWidth = imageWidth;
-    cam->samplesPerPixel = samplesPerPixel;
+    cam->imageHeight = imageHeight;
     cam->maxDepth = maxDepth;
     cam->verticalFov = verticalFov;
     cam->lookFrom = lookFrom;
@@ -93,9 +92,8 @@ __global__ void renderKernel(camera_device* cam, uchar4* gl_image, double* d_acc
 {
     int j = blockIdx.x * blockDim.x + threadIdx.x; // column
     int i = blockIdx.y * blockDim.y + threadIdx.y; // row
-    int k = blockIdx.z * blockDim.z + threadIdx.z; // sample index (if needed)
 
-    if (i >= cam->imageHeight || j >= cam->imageWidth || k >= cam->samplesPerPixel) return;
+    if (i >= cam->imageHeight || j >= cam->imageWidth) return;
 
     int pixel_index = (cam->imageHeight - i -1) * cam->imageWidth + j;
 
@@ -136,20 +134,6 @@ __global__ void renderKernel(camera_device* cam, uchar4* gl_image, double* d_acc
 
     gl_image[pixel_index] = make_uchar4(gl_color.x(), gl_color.y(), gl_color.z(), 255);
 }
-/* __global__ void renderKernel(uchar4* pixels, int width, int height, int frame)
-{
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= width || y >= height) return;
-
-    int idx = y * width + x;
-    unsigned char r = (x + frame) % 256;
-    unsigned char g = (y + frame) % 256;
-    unsigned char b = 128; 
-    pixels[idx] = make_uchar4(r, g, b, 255);
-} */
-//translate kernel
-
 //wrapper functions for adding objects to the scene
 static hittable_list** makeList(int num_objects)
 {
@@ -174,15 +158,14 @@ static void addToList(hittable_list** d_list_ptr, hittable** obj_ptr, std::vecto
     list_hittables.push_back(*obj_ptr);
     cudaFree(bbox_tmp);
 }
-static camera_device* makeCamera(float aspect_ratio, int image_width, int samplesPerPixel, int maxDepth, float vFov, point3 lookFrom, point3 lookAt, vec3 worldUp, float defocus, background** d_bg_ptr)
+static camera_device* makeCamera(int image_width, int image_height, int maxDepth, float vFov, point3 lookFrom, point3 lookAt, vec3 worldUp, float defocus, background** d_bg_ptr)
 {
     camera_device* d_cam;
     CHECK_CUDA_CALL(cudaMallocManaged(&d_cam, sizeof(camera_device)));
     constructCameraKernel << <1, 1 >> > (
         d_cam,
-        /*aspectRatio*/ aspect_ratio,
-        /*imageWidth*/  image_width,
-        /*samplesPerPixel*/ samplesPerPixel,
+        /*imageWidth*/ image_width,
+        /*imageHeight*/ image_height,
         /*maxDepth*/ maxDepth,
         /*verticalFov*/ vFov,
         /*lookFrom*/ lookFrom,
@@ -538,61 +521,7 @@ static rotator** rotateObject(hittable** object, float pitch, float roll, float 
 }
 
 
-/* struct task_organizer
-{
-    dim3 blocks;
-    dim3 threads;
-};
-static task_organizer allocate_threads(int image_width, int image_height, int samplesPerPixel)
-{
-    int blockSizeX = 16;
-    int blockSizeY = 16;
-    int blockSizeZ = 2;
-    task_organizer organizer;
-    dim3 blocks((image_width + blockSizeX - 1) / blockSizeX, (image_height + blockSizeY - 1) / blockSizeY, (samplesPerPixel + blockSizeZ - 1) / blockSizeZ);
-    organizer.blocks = blocks;
-    dim3 threads(blockSizeX, blockSizeY, blockSizeZ);
-    organizer.threads = threads;
-    printf("blocks: %d x %d x %d, threads: %d x %d x %d\n", blocks.x, blocks.y, blocks.z, threads.x, threads.y, threads.z);
-    return organizer;
-}
-static void render(task_organizer organizer, camera_device* d_cam, double* d_image, hittable* d_world, hittable* d_lights, BVHNode* search_tree)
-{
-    renderKernel << <organizer.blocks, organizer.threads >> > (d_cam, d_image, d_world, d_lights, search_tree);
-    CHECK_CUDA_CALL(cudaGetLastError());
-    CHECK_CUDA_CALL(cudaDeviceSynchronize());
-    printf("Rendering complete. Image size: %d x %d\n", d_cam->imageWidth, d_cam->imageHeight);
-}
-static void save_image(double* d_image_buffer, int image_width, int image_height)
-{
-    double* h_image = new double[image_width * image_height * 3];
-    CHECK_CUDA_CALL(cudaMemcpy(h_image, d_image_buffer, image_width * image_height * 3 * sizeof(double), cudaMemcpyDeviceToHost));
-    ImageMaker::imshow(h_image, image_width, image_height);
-    delete[] h_image;
-}
-static void run_render_setup(camera_device* d_cam, hittable** d_world_ptr, hittable** d_lights_ptr, BVHNode* search_tree)
-{
-    printf("starting render pipline\n");
-    //make image buffer
-    double* d_image = makeImageBuffer(d_cam->imageWidth, d_cam->imageHeight);
-    printf("buffer made\n");
-
-   //Launch render
-    task_organizer organizer = allocate_threads(d_cam->imageWidth, d_cam->imageHeight, d_cam->samplesPerPixel);
-    printf("threads allocated\n");
-
-    printf("starting main render\n");
-
-    render(organizer, d_cam, d_image, (hittable*)*d_world_ptr, (hittable*)*d_lights_ptr, search_tree);
-
-    //Copy back and display
-    save_image(d_image, d_cam->imageWidth, d_cam->imageHeight);
-}
- */
-
-
-
-void two_balls_test_setup()
+void two_balls_test_setup(int width, int height)
 {
     std::vector<hittable*> list_d_hittables;
     list_d_hittables.reserve(2);
@@ -623,9 +552,9 @@ void two_balls_test_setup()
     //make bvh for world
     BVHNode* d_bvh = makeBVH(list_d_hittables, list_bboxes);
 
-    camera_device* d_cam = makeCamera(/*aspect ratio*/ 1.0,
-        /*image_width*/ 1024,
-        /*samples per pixel*/ 1,
+    camera_device* d_cam = makeCamera(
+        /*image_width*/ width,
+        /*image_height*/ height,
         /*max depth*/ 50,
         /*vertical fov*/ 40.0,
         /*look from point*/ point3(0, 0, -15),
@@ -641,7 +570,7 @@ void two_balls_test_setup()
     d_accumulation_buffer = makeImageBuffer(d_cam->imageWidth, d_cam->imageHeight);
 }
 
-void cornell_box_setup()
+void cornell_box_setup(int width, int height)
 {
     int num_non_emissive = 0;
     int num_emissive = 0;
@@ -700,10 +629,10 @@ void cornell_box_setup()
     //make bvh for world
     BVHNode* d_bvh = makeBVH(list_d_hittables, list_bboxes);
 
-    camera_device* d_cam = makeCamera(/*aspect ratio*/ 1.0,
-        /*image_width*/ 1024,
-        /*samples per pixel*/ 1,
-        /*max depth*/ 50,
+    camera_device* d_cam = makeCamera(
+        /*image_width*/ width,
+        /*image_height*/ height,
+        /*max depth*/ 2,
         /*vertical fov*/ 40.0,
         /*look from point*/ point3(278, 278, -800),
         /*look at point*/ point3(278, 278, 0),
@@ -716,82 +645,17 @@ void cornell_box_setup()
     d_lights_global = d_lights;
     d_bvh_global = d_bvh;
     d_accumulation_buffer = makeImageBuffer(d_cam->imageWidth, d_cam->imageHeight);
-
-    //run_render_setup(d_cam, (hittable**)d_world, (hittable**)d_lights, d_bvh);
 }
-void setupScene()
+void setupScene(int width, int height)
 {
-    two_balls_test_setup();
+    cornell_box_setup(width, height);
+    //two_balls_test_setup(width, height);
 }
-//void launchKernel() {
-//    int num_non_emissive = 0;
-//    int num_emissive = 0;
-//
-//    std::vector<hittable*> list_d_hittables;
-//    std::vector<AABB> list_bboxes;
-//
-//    std::vector<hittable*> fake_list_d_hittables;
-//    std::vector<AABB> fake_list_bboxes;
-//
-//    cudaDeviceReset();
-//    cudaDeviceSetLimit(cudaLimitStackSize, 1024 * 4); //4kb stack originally
-//
-//    Material* red = makeMaterial(false, color(.65, .05, .05));
-//    Material* white = makeMaterial(false, color(.73, .73, .73));
-//    Material* green = makeMaterial(false, color(.12, .45, .15));
-//    Material* light = makeMaterial(true, color(30, 30, 30));
-//    Material* glass = makeMaterial(false, color(1.0, 1.0, 1.0), 0.0f, 0.0f, 1.0f, 1.5f);
-//    Material* air = makeMaterial(false, color(1.0, 1.0, 1.0), 0.0f, 0.0f, 1.0f, 1.0f);
-//
-//    Material* mirror = makeMaterial(false, color(1.0, 1.0, 1.0), 1.0f);
-//
-//    solid_background** bg = makeSolidBackground(color(color(0.0, 0.0, 0.0)));
-//
-//    quadrilateral** wall_left = makeQuadrilateral(point3(555, 0, 0), vec3(0, 0, 555), vec3(0, 555, 0), green); num_non_emissive++;
-//    quadrilateral** wall_right = makeQuadrilateral(point3(0, 0, 0), vec3(0, 555, 0), vec3(0, 0, 555), red); num_non_emissive++;
-//    quadrilateral** floor = makeQuadrilateral(point3(0, 0, 0), vec3(0, 0, 555), vec3(555, 0, 0), white); num_non_emissive++;
-//    quadrilateral** wall_back = makeQuadrilateral(point3(555, 555, 555), vec3(-555, 0, 0), vec3(0, 0, -555), white); num_non_emissive++;
-//    quadrilateral** ceiling = makeQuadrilateral(point3(0, 0, 555), vec3(0, 555, 0), vec3(555, 0, 0), white); num_non_emissive++;
-//
-//    quadrilateral** ceiling_light = makeQuadrilateral(point3(343, 554, 332), vec3(-130, 0, 0), vec3(0, 0, -105), light); num_emissive++;
-//
-//    hittable_list** box1 = makeBox(point3(130, 0, 65), point3(295, 165, 230), white); num_non_emissive++;
-//
-//    hittable_list** box2 = makeBox(point3(265, 0, 295), point3(430, 330, 460), white); num_non_emissive++;
-//    rotator** box2_rotated = rotateObject((hittable**)box2, 10, 45, 20);
-//
-//    //hittable_list** box3 = makeBox(point3(300, 35, 330), point3(395, 295, 425), white); num_non_emissive++;
-//
-//    hittable_list** d_world = makeList(num_non_emissive + num_emissive);
-//    hittable_list** d_lights = makeList(num_emissive);
-//
-//    addToList(d_lights, (hittable**)ceiling_light, fake_list_d_hittables, fake_list_bboxes);
-//
-//    addToList(d_world, (hittable**)wall_left, list_d_hittables, list_bboxes);
-//    addToList(d_world, (hittable**)wall_right, list_d_hittables, list_bboxes);
-//    addToList(d_world, (hittable**)floor, list_d_hittables, list_bboxes);
-//    addToList(d_world, (hittable**)wall_back, list_d_hittables, list_bboxes);
-//    addToList(d_world, (hittable**)ceiling, list_d_hittables, list_bboxes);
-//    addToList(d_world, (hittable**)ceiling_light, list_d_hittables, list_bboxes);
-//    addToList(d_world, (hittable**)box1, list_d_hittables, list_bboxes);
-//    addToList(d_world, (hittable**)box2_rotated, list_d_hittables, list_bboxes);
-//    //addToList(d_world, (hittable**)box3, list_d_hittables, list_bboxes);
-//
-//
-//
-//    //make bvh for world
-//    BVHNode* d_bvh = makeBVH(list_d_hittables, list_bboxes);
-//
-//    camera_device* d_cam = makeCamera(/*aspect ratio*/ 1.0,
-//        /*image_width*/ 1000,
-//        /*samples per pixel*/ 10,
-//        /*max depth*/ 50,
-//        /*vertical fov*/ 40.0,
-//        /*look from point*/ point3(278, 278, -800),
-//        /*look at point*/ point3(278, 278, 0),
-//        /*world up vector*/ vec3(0, 1, 0),
-//        /*defocus angle*/ 0.0,
-//        /*background object*/ (background**)bg);
-//
-//    run_render_pipeline(d_cam, (hittable**)d_world, (hittable**)d_lights, d_bvh);
-//}
+
+void updateCamera(float pitch, float yaw)
+{
+    d_cam_global->updatePitchYaw(pitch, yaw);
+    //d_cam_global->verticalFov = vfov;
+    cudaMemset(d_accumulation_buffer, 0, d_cam_global->imageWidth * d_cam_global->imageHeight * 3 * sizeof(double));
+    cudaDeviceSynchronize();
+}
