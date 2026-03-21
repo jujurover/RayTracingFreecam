@@ -818,8 +818,8 @@ void cornell_box_setup(int width, int height)
     Material* light = makeMaterial(true, color(1.0f, 1.0f, 1.0f), 1.0f, 6.0f);
     Material* glass = makeMaterial(false, color(1.0, 1.0, 1.0), 0.0f, 0.0f, 1.0f, 1.5f);
     Material* air = makeMaterial(false, color(1.0, 1.0, 1.0), 0.0f, 0.0f, 1.0f, 1.0f);
-    Material* minecraft_texture = makeMaterial(true, (texture*)*makeImageTexture("texture_images/minecraft_textures.png", 9*16, 6*16, 16, 16), 0.8f, 6.0f);
-    Material* image_mat = makeMaterial(false, (texture*)*makeImageTexture("texture_images/steve_head.jpg"));
+    Material* minecraft_texture = makeMaterial(true, (texture*)*makeImageTexture("src/texture_images/minecraft_textures.png", 9*16, 6*16, 16, 16), 0.8f, 6.0f);
+    Material* image_mat = makeMaterial(false, (texture*)*makeImageTexture("src/texture_images/steve_head.jpg"));
 
     Material* mirror = makeMaterial(false, color(1.0, 1.0, 1.0), 1.0f, 0.0f, 1.0f, 0.0f);
 

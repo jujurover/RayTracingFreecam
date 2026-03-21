@@ -1,22 +1,39 @@
-cmake_minimum_required(VERSION 3.18)
+﻿cmake_minimum_required(VERSION 3.18)
 project(RayTracingFreecam LANGUAGES CXX CUDA)
 
-add_executable(RayTracingFreecam RayTracingFreecam.cpp kernel.cu vec3.h ray.h utility.h interval.h AABB.h onb.h color.h hittable.h hittableList.h background.h BVHNode.h pdf.h texture.h material.h triangle.h sphere.h quadrilateral.h camera.h rtw_stb_image.h)
+# Use vcpkg toolchain if available
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE AND EXISTS "${CMAKE_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
+    set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "Vcpkg toolchain file")
+endif()
 
+# Find CUDA
+find_package(CUDAToolkit REQUIRED)
+
+# Find GLFW (vcpkg manifest mode)
+find_package(glfw3 CONFIG REQUIRED)
+
+# Find GLAD
+find_package(glad CONFIG REQUIRED)
+
+# Executable
+add_executable(RayTracingFreecam
+    src/main.cpp
+    src/kernel.cu
+    src/vec3_0.h src/ray.h src/utility.h src/interval.h src/AABB.h src/onb.h src/color.h src/hittable.h src/hittableList.h
+    src/background.h src/BVHNode.h src/pdf.h src/texture.h src/material.h src/triangle.h src/sphere.h src/quadrilateral.h
+    src/camera.h src/rtw_stb_image.h
+)
+
+# Properties
 set_target_properties(RayTracingFreecam PROPERTIES
     CXX_STANDARD 20
     CUDA_SEPARABLE_COMPILATION ON
     CUDA_ARCHITECTURES 75
 )
 
-find_package(CUDAToolkit REQUIRED)
-target_include_directories(RayTracingFreecam PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-target_link_libraries(RayTracingFreecam PRIVATE CUDA::cudart)
-
-find_package(glfw3 CONFIG REQUIRED)
-target_include_directories(RayTracingFreecam PRIVATE ${GLFW_INCLUDE_DIRS})
-target_link_libraries(RayTracingFreecam PRIVATE glfw)
-
-find_package(glad CONFIG REQUIRED)
-target_include_directories(RayTracingFreecam PRIVATE ${GLAD_INCLUDE_DIRS})
-target_link_libraries(RayTracingFreecam PRIVATE glad::glad)
+# Include & link
+target_link_libraries(RayTracingFreecam PRIVATE
+    CUDA::cudart
+    glfw      # <- matches the imported target in glfw3Targets.cmake
+    glad::glad
+)
