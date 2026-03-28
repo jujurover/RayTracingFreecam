@@ -738,7 +738,7 @@ static rotator** rotateObject(hittable** object, float pitch, float roll, float 
     delete[] h_image;
 } */
 
-void two_balls_test_setup(int width, int height)
+void two_balls_test_setup(int width, int height, int depth)
 {
     cudaDeviceReset();
     cudaDeviceSetLimit(cudaLimitStackSize, 1024 * 4); //4kb stack originally
@@ -783,7 +783,7 @@ void two_balls_test_setup(int width, int height)
     camera_device* d_cam = makeCamera(
         /*image_width*/ width,
         /*image_height*/ height,
-        /*max depth*/ 5,
+        /*max depth*/ depth,
         /*vertical fov*/ 40.0,
         /*look from point*/ point3(0, 0, -15),
         /*look at point*/ point3(0, 0, -10),
@@ -798,7 +798,7 @@ void two_balls_test_setup(int width, int height)
     d_accumulation_buffer = makeImageBuffer(d_cam->imageWidth, d_cam->imageHeight);
 }
 
-void cornell_box_setup(int width, int height)
+void cornell_box_setup(int width, int height, int depth)
 {
     int num_non_emissive = 0;
     int num_emissive = 0;
@@ -814,30 +814,38 @@ void cornell_box_setup(int width, int height)
 
     Material* red = makeMaterial(false, color(.65f, .05f, .05f));
     Material* white = makeMaterial(false, color(.73f, .73f, .73f), 0.0f, 0.0f, 1.0f, 0.4f);
+	Material* checker = makeMaterial(false, (texture*)*makeCheckerTexture(color(.4f, .4f, .4f), color(.9f, .9f, .9f), 0.1), 0, 0, 0.8, 0.1);
     Material* green = makeMaterial(false, color(.12f, .45f, .15f));
     Material* light = makeMaterial(true, color(1.0f, 1.0f, 1.0f), 1.0f, 6.0f);
-    Material* glass = makeMaterial(false, color(1.0, 1.0, 1.0), 0.0f, 0.0f, 1.0f, 1.5f);
-    Material* air = makeMaterial(false, color(1.0, 1.0, 1.0), 0.0f, 0.0f, 1.0f, 1.0f);
-    Material* minecraft_texture = makeMaterial(true, (texture*)*makeImageTexture("src/texture_images/minecraft_textures.png", 9*16, 6*16, 16, 16), 0.8f, 6.0f);
+    Material* glass = makeMaterial(false, color(1.0, 1.0, 1.0), 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.5f);
+    Material* air = makeMaterial(false, color(1.0, 1.0, 1.0), 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f);
+    Material* minecraft_texture = makeMaterial(true, (texture*)*makeImageTexture("src/texture_images/minecraft_textures.png", 9*16, 6*16, 16, 16), 0.5f, 4.0f, 1.0f, 0.5);
     Material* image_mat = makeMaterial(false, (texture*)*makeImageTexture("src/texture_images/steve_head.jpg"));
 
     Material* mirror = makeMaterial(false, color(1.0, 1.0, 1.0), 1.0f, 0.0f, 1.0f, 0.0f);
 
     solid_background** bg = makeSolidBackground(color(color(0.0, 0.0, 0.0)));
 
+    //making all the walls/ceiling/floor of the cornell box
     quadrilateral** wall_left = makeQuadrilateral(point3(555, 0, 0), vec3(0, 0, 555), vec3(0, 555, 0), green); num_non_emissive++;
     quadrilateral** wall_right = makeQuadrilateral(point3(0, 0, 0), vec3(0, 555, 0), vec3(0, 0, 555), red); num_non_emissive++;
-    quadrilateral** floor = makeQuadrilateral(point3(0, 0, 0), vec3(0, 0, 555), vec3(555, 0, 0), white); num_non_emissive++;    
+    quadrilateral** floor = makeQuadrilateral(point3(0, 0, 0), vec3(0, 0, 555), vec3(555, 0, 0), checker); num_non_emissive++;
     quadrilateral** wall_back = makeQuadrilateral(point3(555, 555, 555), vec3(-555, 0, 0), vec3(0, 0, -555), white); num_non_emissive++;
     quadrilateral** ceiling = makeQuadrilateral(point3(0, 0, 555), vec3(0, 555, 0), vec3(555, 0, 0), white); num_non_emissive++;
 
+    //making ceiling light of the cornell box
     quadrilateral** ceiling_light = makeQuadrilateral(point3(343, 554, 332), vec3(-130, 0, 0), vec3(0, 0, -105), light); num_emissive++;
 
-    //hittable_list** box1 = makeBox(point3(130, 0, 65), point3(295, 165, 230), minecraft_texture); num_emissive++;
-    sphere** box1 = makeSphere(point3(190, 90, 190), 90, minecraft_texture); num_emissive++;
+    //making glowstone block
+    hittable_list** glowstone_block = makeBox(point3(40, 0, 265), point3(205, 165, 430), minecraft_texture); num_emissive++;
+    //sphere** box1 = makeSphere(point3(190, 90, 190), 90, minecraft_texture); num_emissive++;
+    
+    //making glass sphere
+    sphere** glass_sphere = makeSphere(point3(290, 150, 200), 90, glass); num_non_emissive++;
 
-    hittable_list** box2 = makeBox(point3(265, 0, 295), point3(430, 330, 460), mirror); num_non_emissive++;
-    rotator** box2_rotated = rotateObject((hittable**)box2, 10, 15, 20);
+    //rotated mirror box
+    hittable_list** mirror_box = makeBox(point3(265, 0, 295), point3(430, 330, 460), mirror); num_non_emissive++;
+    rotator** rotated_mirror_box = rotateObject((hittable**)mirror_box, 10, 15, 20);
 
     //hittable_list** box3 = makeBox(point3(300, 35, 330), point3(395, 295, 425), white); num_non_emissive++;
 
@@ -845,7 +853,7 @@ void cornell_box_setup(int width, int height)
     hittable_list** d_lights = makeList(num_emissive);
 
     addToList(d_lights, (hittable**)ceiling_light, fake_list_d_hittables, fake_list_bboxes);
-    addToList(d_lights, (hittable**)box1, fake_list_d_hittables, fake_list_bboxes); 
+    addToList(d_lights, (hittable**)glowstone_block, fake_list_d_hittables, fake_list_bboxes);
 
     addToList(d_world, (hittable**)wall_left, list_d_hittables, list_bboxes);
     addToList(d_world, (hittable**)wall_right, list_d_hittables, list_bboxes);
@@ -853,8 +861,9 @@ void cornell_box_setup(int width, int height)
     addToList(d_world, (hittable**)wall_back, list_d_hittables, list_bboxes);
     addToList(d_world, (hittable**)ceiling, list_d_hittables, list_bboxes);
     addToList(d_world, (hittable**)ceiling_light, list_d_hittables, list_bboxes);
-    addToList(d_world, (hittable**)box1, list_d_hittables, list_bboxes);
-    addToList(d_world, (hittable**)box2_rotated, list_d_hittables, list_bboxes);
+    addToList(d_world, (hittable**)glowstone_block, list_d_hittables, list_bboxes);
+    addToList(d_world, (hittable**)rotated_mirror_box, list_d_hittables, list_bboxes);
+    addToList(d_world, (hittable**)glass_sphere, list_d_hittables, list_bboxes);
     //addToList(d_world, (hittable**)box3, list_d_hittables, list_bboxes);
 
 
@@ -865,7 +874,7 @@ void cornell_box_setup(int width, int height)
     camera_device* d_cam = makeCamera(
         /*image_width*/ width,
         /*image_height*/ height,
-        /*max depth*/ 10,
+        /*max depth*/ depth,
         /*vertical fov*/ 40.0,
         /*look from point*/ point3(278, 278, -800),
         /*look at point*/ point3(278, 278, 0),
@@ -885,10 +894,10 @@ void cleanupScene()
     cudaDeviceReset();
 }
 
-void setupScene(int width, int height)
+void setupScene(int width, int height, int depth)
 {
-    cornell_box_setup(width, height);
-    //two_balls_test_setup(width, height);
+    cornell_box_setup(width, height, depth);
+    //two_balls_test_setup(width, height, depth);
 }
 
 

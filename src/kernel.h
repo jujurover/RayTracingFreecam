@@ -17,7 +17,7 @@ void cleanupPBOLowRes();
 void initScreenQuadLowRes();
 
 void initScreenShader();
-void setupScene(int width, int height);
+void setupScene(int width, int height, int depth);
 void stageCameraYawPitch(float pitch, float yaw);
 void stageCameraFOV(float fov);
 void stageCameraMovement(float right, float up, float forward);

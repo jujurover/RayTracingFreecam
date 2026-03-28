@@ -8,11 +8,12 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 600;
+const unsigned int SCR_HEIGHT = 450;
+const unsigned int DEPTH = 50;
 const float CAM_SPEED = 25.0f;
-const float ROLL_SPEED = 1.0f;
-const float LOW_RES_FACTOR = 0.25f; // Factor to reduce resolution when moving
+const float ROLL_SPEED = 2.0f;
+const float LOW_RES_FACTOR = 0.5f; // Factor to reduce resolution when moving
 
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
@@ -108,7 +109,7 @@ int main()
         return -1;
     }
 
-    setupScene(SCR_WIDTH, SCR_HEIGHT);
+    setupScene(SCR_WIDTH, SCR_HEIGHT, DEPTH);
     initPBO(SCR_WIDTH, SCR_HEIGHT); 
     initTexture(SCR_WIDTH, SCR_HEIGHT);
     initScreenQuad();

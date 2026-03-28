@@ -17,7 +17,7 @@ public:
     __host__ BVHNode(std::vector<hittable*>& objects, std::vector<int>& indices, std::vector<AABB> bboxes, size_t start, size_t end) {
         bbox = AABB::empty;
         for (size_t object_index = start; object_index < end; object_index++) {
-            bbox = AABB(bbox, bboxes[object_index]);
+            bbox = AABB(bbox, bboxes[indices[object_index]]);
         }
 
         size_t object_span = end - start;
@@ -80,6 +80,10 @@ public:
 
                 left = new BVHNode(objects, indices, bboxes, start, best_split);
                 right = new BVHNode(objects, indices, bboxes, best_split, end);
+            } else {
+                // Fallback: if no valid split found, create a leaf node
+                is_leaf_node = true;
+                hittable_left = hittable_right = objects[indices[start]];
             }
         }
     }
