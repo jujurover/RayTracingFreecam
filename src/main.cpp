@@ -8,9 +8,9 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
 
 // settings
-const unsigned int SCR_WIDTH = 600;
-const unsigned int SCR_HEIGHT = 450;
-const unsigned int DEPTH = 50;
+const unsigned int SCR_WIDTH = 1200;
+const unsigned int SCR_HEIGHT = 900;
+const unsigned int DEPTH = 30;
 const float CAM_SPEED = 25.0f;
 const float ROLL_SPEED = 2.0f;
 const float LOW_RES_FACTOR = 0.5f; // Factor to reduce resolution when moving
