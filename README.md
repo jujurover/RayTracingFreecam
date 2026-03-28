@@ -4,3 +4,9 @@ These should be the right files, but everything CMake-wise needs to be regenerat
 Stuff to make sure before running:
 - ensure CUDA compiler (must be pre installed) matches Nvidia GPU.
 - ensure vcpkg is properly integrated (make sure toolchain file is correctly configured)
+
+When building for the first time, use this command:
+cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=C:/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+Then, use:
+cmake --build build
