@@ -16,6 +16,7 @@ This is an interactive scene tracer that uses some cool physics and statistics t
 6. R: reset perspective rotation to 0 degrees
 7. Shift: down
 8. Space: up
+9. Scroll wheel: increase/decrease FOV (i.e. zoom)
 
 ### Rough principles
 
